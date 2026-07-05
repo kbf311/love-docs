@@ -1,0 +1,139 @@
+# LÖVE（Love2D）による画像表示手順・テクニック集
+
+LÖVE（Love2D）フレームワークにおいて、Luaスクリプトを用いて画像を読み込み、画面に描画する基本手順から、応用的なコントロール技術までを解説します。
+
+---
+
+## 1. 基本的な画像表示手順
+
+LÖVEで画像を表示する最も基本的なコード構造です。画像ファイルの読み込みは、毎フレーム実行される `love.draw` 内ではなく、起動時に一度だけ実行される `love.load` 内で行うのが原則です。
+
+### 構成ファイル
+
+プロジェクトフォルダ内に以下の2つのファイルを配置します。
+
+* `main.lua` （プログラム本体）
+* `character.png` （表示したい画像ファイル）
+
+### サンプルコード（main.lua）
+
+```lua
+-- 起動時に一度だけ実行される関数
+function love.load()
+    -- 画像ファイルの読み込み（グラフィックメモリへのロード）
+    image = love.graphics.newImage("character.png")
+end
+
+-- 画面描画のたびに繰り返し実行される関数
+function love.draw()
+    -- 画像の描画（x=100, y=150 の位置に配置）
+    love.graphics.draw(image, 100, 150)
+end
+
+```
+
+---
+
+## 2. 描画位置と変形のコントロール（引数の詳細）
+
+`love.graphics.draw` 関数は、位置の指定だけでなく、回転、拡大縮小、中心点の変更など、豊富な引数を持ちます。
+
+### 構文
+
+> `love.graphics.draw( texture, x, y, r, sx, sy, ox, oy )`
+
+### 各引数の役割と指定方法
+
+| 引数 | 役割 | 初期値・単位 | 解説 |
+| --- | --- | --- | --- |
+| **texture** | 画像オブジェクト | 必須 | `love.graphics.newImage` で生成した変数。 |
+| **x** | X座標 | 0 (ピクセル) | 画面左端からの距離。 |
+| **y** | Y座標 | 0 (ピクセル) | 画面上端からの距離。 |
+| **r** | 回転角度 | 0 (ラジアン) | 時計回りの回転量。度数法（°）ではなく**弧度法（ラジアン）**で指定。 |
+| **sx** | X軸の拡大率 | 1 (等倍) | `2` で横幅2倍、`0.5` で半分。`-1` で左右反転。 |
+| **sy** | Y軸の拡大率 | 1 (等倍) | `2` で縦幅2倍、`0.5` で半分。`-1` で上下反転。 |
+| **ox** | 原点位置X | 0 (ピクセル) | 画像内における回転・拡大の基準点（ローカル座標）。 |
+| **oy** | 原点位置Y | 0 (ピクセル) | 画像内における回転・拡大の基準点（ローカル座標）。 |
+
+### 応用コード例（回転と拡大・縮小）
+
+```lua
+function love.load()
+    image = love.graphics.newImage("character.png")
+    
+    -- 回転のために「度」から「ラジアン」へ変換する関数を用意
+    local deg = 45
+    radian = math.rad(deg)
+    
+    -- 画像の中心を回転・拡大の基準点（原点）にするための計算
+    img_width = image:getWidth()
+    img_height = image:getHeight()
+    ox = img_width / 2
+    oy = img_height / 2
+end
+
+function love.draw()
+    -- 画面の (400, 300) の位置に、45度回転、2倍拡大、画像中心を基準にして描画
+    love.graphics.draw(image, 400, 300, radian, 2, 2, ox, oy)
+end
+
+```
+
+---
+
+## 3. 実践テクニック・トラブルシューティング
+
+### ① ドット絵がぼやける場合の対処法（テクスチャフィルタ）
+
+デフォルトの設定では、画像を拡大・縮小した際にバイリニアフィルタが適用され、全体が滑らか（ぼやけた状態）になります。ピクセルアート（ドット絵）をくっきりと表示したい場合は、読み込み直後にフィルタモードを変更します。
+
+```lua
+function love.load()
+    image = love.graphics.newImage("pixel_art.png")
+    -- 縮小・拡大時のフィルタを「nearest（最近傍補間）」に設定
+    image:setFilter("nearest", "nearest")
+end
+
+```
+
+### ② 画像の一部だけを切り抜いて表示する（Quadの利用）
+
+スプライトシート（1つの画像ファイルに複数のキャラクターやアニメーションパターンが詰まったもの）から、特定の部分だけを切り出して表示する場合は `love.graphics.newQuad` を使用します。
+
+```lua
+function love.load()
+    spritesheet = love.graphics.newImage("tileset.png")
+    
+    -- 切り出す範囲（Quad）の作成
+    -- 引数: 切り出し開始X, 開始Y, 切り出す幅, 切り出す高さ, 画像全体の幅, 画像全体の高さ
+    local quadX, quadY = 32, 0
+    local width, height = 32, 32
+    local sw, sh = spritesheet:getDimensions()
+    
+    myQuad = love.graphics.newQuad(quadX, quadY, width, height, sw, sh)
+end
+
+function love.draw()
+    -- Quadを使用した描画（第2引数にQuadを挿入する）
+    love.graphics.draw(spritesheet, myQuad, 100, 100)
+end
+
+```
+
+### ③ 画像に色を乗せる・不透明度を変える（Colorの連動）
+
+LÖVEでは、画像をそのまま描画するだけでなく、直前に設定された「描画色」の影響を受けます。これを利用してフラッシュ効果や半透明処理を行います。
+
+```lua
+function love.draw()
+    -- 赤色を混ぜて、不透明度を50%（0.5）にして画像を描画する
+    -- 引数: 赤, 緑, 青, アルファ値（すべて 0.0 ～ 1.0）
+    love.graphics.setColor(1.0, 0.5, 0.5, 0.5)
+    love.graphics.draw(image, 100, 100)
+    
+    -- 描画後に色を「白（1.0, 1.0, 1.0, 1.0）」に戻さないと、
+    -- 以降に描画されるすべてのオブジェクトに色が付着するので注意
+    love.graphics.setColor(1.0, 1.0, 1.0, 1.0)
+end
+
+```
